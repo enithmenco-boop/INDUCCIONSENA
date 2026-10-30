@@ -1,0 +1,864 @@
+{
+  "entities": {
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Isolated PII record storing the verified user email address.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email address of the user.",
+          "minLength": 5,
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of record creation."
+        }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "Ficha": {
+      "title": "Ficha",
+      "description": "SENA training cohort (Ficha de Caracterización) managed by an instructor.",
+      "type": "object",
+      "properties": {
+        "fichaCode": {
+          "type": "string",
+          "description": "Official SENA ficha numeric/alphanumeric code.",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "programName": {
+          "type": "string",
+          "description": "Name of the SENA training program.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "centerName": {
+          "type": "string",
+          "description": "SENA Training Center and Regional name.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "jornada": {
+          "type": "string",
+          "description": "Training schedule modality.",
+          "enum": ["Diurna", "Mixta", "Nocturna", "Virtual"],
+          "maxLength": 20
+        },
+        "instructorId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the instructor who owns this ficha.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "instructorName": {
+          "type": "string",
+          "description": "Display name of the responsible SENA instructor.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "description": "Lifecycle status of the induction ficha.",
+          "enum": ["activa", "cerrada"],
+          "maxLength": 20
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the ficha was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the ficha was last updated."
+        }
+      },
+      "required": [
+        "fichaCode",
+        "programName",
+        "centerName",
+        "jornada",
+        "instructorId",
+        "instructorName",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Apprentice induction progress and appropriation state inside a parent SENA Ficha.",
+      "type": "object",
+      "properties": {
+        "fichaId": {
+          "type": "string",
+          "description": "Document ID of the parent Ficha.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fichaCode": {
+          "type": "string",
+          "description": "Code of the parent Ficha.",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "programName": {
+          "type": "string",
+          "description": "Training program name.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the creator (apprentice or registering instructor).",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "instructorId": {
+          "type": "string",
+          "description": "UID of the parent Ficha instructor.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "apprenticeName": {
+          "type": "string",
+          "description": "Full name of the SENA apprentice.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "documentCode": {
+          "type": "string",
+          "description": "Institutional apprentice badge or registration code (non-PII).",
+          "minLength": 4,
+          "maxLength": 24,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "completedModules": {
+          "type": "array",
+          "description": "Bounded list of completed induction module identifiers (max 4)."
+        },
+        "evalScore": {
+          "type": "integer",
+          "description": "Latest overall appropriation evaluation percentage (0-100)."
+        },
+        "dimIdentity": {
+          "type": "integer",
+          "description": "Appropriation score for Institutional Identity (0-100)."
+        },
+        "dimValues": {
+          "type": "integer",
+          "description": "Appropriation score for Institutional Values (0-100)."
+        },
+        "dimRights": {
+          "type": "integer",
+          "description": "Appropriation score for Apprentice Rights (0-100)."
+        },
+        "dimDuties": {
+          "type": "integer",
+          "description": "Appropriation score for Apprentice Duties (0-100)."
+        },
+        "attemptsCount": {
+          "type": "integer",
+          "description": "Number of interactive evaluations completed."
+        },
+        "appropriationState": {
+          "type": "string",
+          "description": "Qualitative SENA induction appropriation status.",
+          "enum": ["en_proceso", "apropiado", "plan_mejoramiento", "certificado"],
+          "maxLength": 30
+        },
+        "instructorObservation": {
+          "type": "string",
+          "description": "Pedagogical observation or improvement plan note from the instructor.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of enrollment creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest progress update."
+        }
+      },
+      "required": [
+        "fichaId",
+        "fichaCode",
+        "programName",
+        "authorId",
+        "instructorId",
+        "apprenticeName",
+        "documentCode",
+        "completedModules",
+        "evalScore",
+        "dimIdentity",
+        "dimValues",
+        "dimRights",
+        "dimDuties",
+        "attemptsCount",
+        "appropriationState",
+        "instructorObservation",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "EvaluationAttempt": {
+      "title": "EvaluationAttempt",
+      "description": "Immutable diagnostic record of an interactive SENA induction knowledge evaluation.",
+      "type": "object",
+      "properties": {
+        "authorId": {
+          "type": "string",
+          "description": "UID of the user who completed the evaluation.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fichaId": {
+          "type": "string",
+          "description": "Referenced Ficha document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "instructorId": {
+          "type": "string",
+          "description": "UID of the responsible Ficha instructor.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fichaCode": {
+          "type": "string",
+          "description": "SENA ficha code.",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "apprenticeName": {
+          "type": "string",
+          "description": "Display name of the evaluated apprentice.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "score": {
+          "type": "integer",
+          "description": "Overall percentage score (0-100)."
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "True if score >= 70 (Juicio Evaluativo Aprobado)."
+        },
+        "dimIdentity": {
+          "type": "integer",
+          "description": "Score in Institutional Identity dimension (0-100)."
+        },
+        "dimValues": {
+          "type": "integer",
+          "description": "Score in Values and Integrity dimension (0-100)."
+        },
+        "dimRights": {
+          "type": "integer",
+          "description": "Score in Apprentice Rights dimension (0-100)."
+        },
+        "dimDuties": {
+          "type": "integer",
+          "description": "Score in Apprentice Duties dimension (0-100)."
+        },
+        "correctCount": {
+          "type": "integer",
+          "description": "Number of correct answers out of 10."
+        },
+        "totalQuestions": {
+          "type": "integer",
+          "description": "Total number of questions evaluated (10)."
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "description": "Elapsed time spent in the evaluation in seconds."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of evaluation completion."
+        }
+      },
+      "required": [
+        "authorId",
+        "fichaId",
+        "instructorId",
+        "fichaCode",
+        "apprenticeName",
+        "score",
+        "passed",
+        "dimIdentity",
+        "dimValues",
+        "dimRights",
+        "dimDuties",
+        "correctCount",
+        "totalQuestions",
+        "durationSeconds",
+        "createdAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted role lookup document granting platform administrator privileges.",
+      "type": "object",
+      "properties": {
+        "grantedBy": {
+          "type": "string",
+          "description": "UID of the bootstrap administrator who granted access.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was granted."
+        }
+      },
+      "required": ["grantedBy", "createdAt"]
+    },
+    "ApprenticeProfile": {
+      "title": "ApprenticeProfile",
+      "description": "Non-PII institutional and academic characterization profile for an SENA apprentice.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the apprentice owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "apprenticeName": {
+          "type": "string",
+          "description": "Full institutional display name of the apprentice.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "documentCode": {
+          "type": "string",
+          "description": "Institutional apprentice badge or registration code (non-PII).",
+          "minLength": 4,
+          "maxLength": 24,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "trainingLevel": {
+          "type": "string",
+          "description": "SENA vocational training level.",
+          "enum": [
+            "Tecnólogo",
+            "Técnico",
+            "Operario",
+            "Auxiliar",
+            "Especialización Tecnológica"
+          ],
+          "maxLength": 40
+        },
+        "modality": {
+          "type": "string",
+          "description": "Training delivery modality.",
+          "enum": ["Presencial", "Virtual", "A Distancia"],
+          "maxLength": 20
+        },
+        "regionalCenter": {
+          "type": "string",
+          "description": "SENA Regional and Training Center name.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "bloodType": {
+          "type": "string",
+          "description": "ABO/Rh group for institutional badge SST emergencies.",
+          "enum": ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"],
+          "maxLength": 5
+        },
+        "preferredProductiveAlt": {
+          "type": "string",
+          "description": "Projected Productive Stage modality under Art. 26 and Decreto 0223 de 2026.",
+          "enum": [
+            "Contrato de Aprendizaje Laboral Especial (Dec. 0223/2026)",
+            "Vínculo Formativo o Laboral",
+            "Proyecto Productivo / Fondo Emprender",
+            "Prácticas Economía Popular / CampeSENA",
+            "Monitoría SENA",
+            "Pasantía Institucional"
+          ],
+          "maxLength": 80
+        },
+        "representationRole": {
+          "type": "string",
+          "description": "Student participation or representation role under Art. 7.",
+          "enum": [
+            "Aprendiz en Formación",
+            "Vocero Principal de Ficha",
+            "Vocero Suplente de Ficha",
+            "Vocero de Enfoque Diferencial",
+            "Representante de Centro"
+          ],
+          "maxLength": 50
+        },
+        "differentialFocus": {
+          "type": "string",
+          "description": "Voluntary institutional characterization focus for Bienestar al Aprendiz.",
+          "enum": [
+            "Ninguno / General",
+            "Jóvenes en Acción / Renta Joven",
+            "Comunidad Campesina (CampeSENA)",
+            "Pueblos Étnicos (Indígena / NARP / Rrom)",
+            "Persona con Discapacidad (Ajustes Razonables)",
+            "Mujer Cabeza de Familia / Enfoque de Género",
+            "Víctima del Conflicto Armado"
+          ],
+          "maxLength": 70
+        },
+        "commitmentAccepted": {
+          "type": "boolean",
+          "description": "Whether the apprentice subscribed to the Art. 8 Numeral 01 institutional commitment."
+        },
+        "bioGoal": {
+          "type": "string",
+          "description": "Apprentice training project and professional goal statement.",
+          "minLength": 0,
+          "maxLength": 280
+        },
+        "selectedFichaId": {
+          "type": "string",
+          "description": "Currently linked Ficha ID or empty string.",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]*$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": [
+        "userId",
+        "apprenticeName",
+        "documentCode",
+        "trainingLevel",
+        "modality",
+        "regionalCenter",
+        "bloodType",
+        "preferredProductiveAlt",
+        "representationRole",
+        "differentialFocus",
+        "commitmentAccepted",
+        "bioGoal",
+        "selectedFichaId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GfpiF165Submission": {
+      "title": "GfpiF165Submission",
+      "description": "Official SENA Formato GFPI-F-165 record for selecting or modifying the apprentice productive stage (practicas) alternative.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the apprentice owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fichaId": {
+          "type": "string",
+          "description": "Optional linked Ficha document ID or empty string.",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]*$"
+        },
+        "instructorId": {
+          "type": "string",
+          "description": "UID of the parent Ficha instructor when linked to an active Ficha, or empty string.",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]*$"
+        },
+        "procedureType": {
+          "type": "string",
+          "description": "Type of GFPI-F-165 filing procedure.",
+          "enum": [
+            "Selección Inicial (Inducción)",
+            "Modificación de Alternativa"
+          ],
+          "maxLength": 40
+        },
+        "filingCode": {
+          "type": "string",
+          "description": "Institutional verification code for the GFPI-F-165 filing.",
+          "minLength": 6,
+          "maxLength": 32,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "apprenticeName": {
+          "type": "string",
+          "description": "Full institutional name of the apprentice.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "documentType": {
+          "type": "string",
+          "description": "Colombian identification document category without storing PII numbers.",
+          "enum": ["CC", "TI", "CE", "PPT", "PEP"],
+          "maxLength": 10
+        },
+        "documentCode": {
+          "type": "string",
+          "description": "Institutional apprentice badge or registration code.",
+          "minLength": 4,
+          "maxLength": 24,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "contactEmail": {
+          "type": "string",
+          "description": "Optional apprentice institutional or contact email for GFPI-F-165 notification (PII protected by owner/instructor/admin read gate).",
+          "minLength": 0,
+          "maxLength": 254
+        },
+        "contactPhone": {
+          "type": "string",
+          "description": "Optional apprentice contact phone number for GFPI-F-165 follow-up.",
+          "minLength": 0,
+          "maxLength": 30,
+          "pattern": "^[0-9+()\\-\\s]*$"
+        },
+        "residenceAddress": {
+          "type": "string",
+          "description": "Optional residence address and municipality of the apprentice for GFPI-F-165.",
+          "minLength": 0,
+          "maxLength": 140
+        },
+        "fichaCode": {
+          "type": "string",
+          "description": "SENA characterization ficha code.",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "programName": {
+          "type": "string",
+          "description": "Name of the SENA training program.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "trainingLevel": {
+          "type": "string",
+          "description": "Vocational training level of the program.",
+          "enum": [
+            "Tecnólogo",
+            "Técnico",
+            "Operario",
+            "Auxiliar",
+            "Especialización Tecnológica"
+          ],
+          "maxLength": 40
+        },
+        "regionalCenter": {
+          "type": "string",
+          "description": "SENA Regional and Training Center name.",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "jornada": {
+          "type": "string",
+          "description": "Schedule modality of the training program.",
+          "enum": ["Diurna", "Mixta", "Nocturna", "Virtual"],
+          "maxLength": 20
+        },
+        "lectivaStartDate": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD for start of Etapa Lectiva.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "lectivaEndDate": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD for end of Etapa Lectiva.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "productivaStartDate": {
+          "type": "string",
+          "description": "Projected ISO date YYYY-MM-DD for start of Etapa Productiva.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "productivaEndDate": {
+          "type": "string",
+          "description": "Projected ISO date YYYY-MM-DD for completion of Etapa Productiva.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "selectedAlternative": {
+          "type": "string",
+          "description": "Selected SENA productive stage alternative in Formato GFPI-F-165.",
+          "enum": [
+            "Contrato de Aprendizaje Laboral Especial (Dec. 0223/2026)",
+            "Vínculo Formativo o Laboral",
+            "Proyecto Productivo / Fondo Emprender",
+            "Prácticas Economía Popular / CampeSENA",
+            "Monitoría SENA",
+            "Pasantía Institucional"
+          ],
+          "maxLength": 80
+        },
+        "alternativeJustification": {
+          "type": "string",
+          "description": "Apprentice statement explaining the focus or motivation for the selected alternative.",
+          "minLength": 0,
+          "maxLength": 400
+        },
+        "companyName": {
+          "type": "string",
+          "description": "Optional projected co-training company, entity, or productive project title.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "companyNit": {
+          "type": "string",
+          "description": "Optional NIT or institutional reference code of the co-training entity.",
+          "minLength": 0,
+          "maxLength": 24,
+          "pattern": "^[0-9A-Za-z\\-]*$"
+        },
+        "companyCity": {
+          "type": "string",
+          "description": "Optional municipality or city where the productive stage is projected.",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "companyContactName": {
+          "type": "string",
+          "description": "Optional immediate supervisor or contact person at the co-training entity.",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "companySector": {
+          "type": "string",
+          "description": "Economic sector of the projected practice scenario.",
+          "enum": [
+            "Por definir en Etapa Lectiva",
+            "Tecnología y Software",
+            "Industria y Manufactura",
+            "Comercio y Servicios",
+            "Economía Popular / Agropecuario",
+            "Entidad Pública / SENA"
+          ],
+          "maxLength": 50
+        },
+        "apprenticeSignatureAccepted": {
+          "type": "boolean",
+          "description": "Digital declaration, Ley 1581 data authorization, and signature acceptance by the apprentice."
+        },
+        "status": {
+          "type": "string",
+          "description": "Lifecycle status of the GFPI-F-165 form submission.",
+          "enum": ["borrador", "radicado", "validado_coordinacion"],
+          "maxLength": 30
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the GFPI-F-165 record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the GFPI-F-165 record was last updated."
+        }
+      },
+      "required": [
+        "userId",
+        "fichaId",
+        "instructorId",
+        "procedureType",
+        "filingCode",
+        "apprenticeName",
+        "documentType",
+        "documentCode",
+        "contactEmail",
+        "contactPhone",
+        "residenceAddress",
+        "fichaCode",
+        "programName",
+        "trainingLevel",
+        "regionalCenter",
+        "jornada",
+        "lectivaStartDate",
+        "lectivaEndDate",
+        "productivaStartDate",
+        "productivaEndDate",
+        "selectedAlternative",
+        "alternativeJustification",
+        "companyName",
+        "companyNit",
+        "companyCity",
+        "companyContactName",
+        "companySector",
+        "apprenticeSignatureAccepted",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FichaSheetLink": {
+      "title": "FichaSheetLink",
+      "description": "Instructor-isolated Google Sheets and Google Drive synchronization metadata linked to a parent SENA Ficha.",
+      "type": "object",
+      "properties": {
+        "fichaId": {
+          "type": "string",
+          "description": "Document ID of the linked parent Ficha.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fichaCode": {
+          "type": "string",
+          "description": "Official SENA ficha code.",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^[0-9A-Za-z\\-]+$"
+        },
+        "instructorId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owning Ficha instructor.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "spreadsheetId": {
+          "type": "string",
+          "description": "Google Drive / Google Sheets file identifier.",
+          "minLength": 10,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "spreadsheetUrl": {
+          "type": "string",
+          "description": "HTTPS URL to open the linked Google Sheets workbook.",
+          "minLength": 20,
+          "maxLength": 300
+        },
+        "spreadsheetTitle": {
+          "type": "string",
+          "description": "Display title of the Google Sheets workbook in Google Drive.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "templateSourceName": {
+          "type": "string",
+          "description": "Reference template name used to structure the GFPI-F-165 workbook.",
+          "minLength": 0,
+          "maxLength": 140
+        },
+        "lastSyncedRows": {
+          "type": "integer",
+          "description": "Count of apprentice records synchronized during the latest run."
+        },
+        "lastDataSignature": {
+          "type": "string",
+          "description": "Deterministic hash of the last synchronized cohort snapshot.",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]*$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the sheet link was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest synchronization update."
+        }
+      },
+      "required": [
+        "fichaId",
+        "fichaCode",
+        "instructorId",
+        "spreadsheetId",
+        "spreadsheetUrl",
+        "spreadsheetTitle",
+        "templateSourceName",
+        "lastSyncedRows",
+        "lastDataSignature",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users_private/{userId}": {
+      "schema": "UserPrivate",
+      "description": "Private PII vault isolated per user."
+    },
+    "/apprentice_profiles/{userId}": {
+      "schema": "ApprenticeProfile",
+      "description": "Owner-isolated institutional apprentice profile and digital badge configuration."
+    },
+    "/gfpi_f_165_submissions/{userId}": {
+      "schema": "GfpiF165Submission",
+      "description": "Official SENA Formato GFPI-F-165 productive stage alternative selection per apprentice."
+    },
+    "/fichas/{fichaId}": {
+      "schema": "Ficha",
+      "description": "SENA characterization cohorts managed by instructors."
+    },
+    "/fichas/{fichaId}/enrollments/{enrollmentId}": {
+      "schema": "Enrollment",
+      "description": "Subcollection of apprentice induction progress governed by parent Ficha."
+    },
+    "/ficha_sheet_links/{fichaId}": {
+      "schema": "FichaSheetLink",
+      "description": "Instructor-isolated Google Sheets synchronization link per SENA Ficha."
+    },
+    "/evaluations/{evalId}": {
+      "schema": "EvaluationAttempt",
+      "description": "Immutable log of interactive induction evaluations."
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminRecord",
+      "description": "Trusted administrator registry."
+    }
+  }
+}

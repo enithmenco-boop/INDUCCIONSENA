@@ -1,0 +1,6 @@
+{
+  "name": "Ruta Inducción SENA",
+  "description": "Plataforma interactiva de gestión de inducción para aprendices del SENA: identidad institucional, valores, derechos, deberes y evaluación de apropiación.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

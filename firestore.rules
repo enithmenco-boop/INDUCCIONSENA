@@ -1,0 +1,723 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Bootstrap Admin check (Zero DB lookups; safe for list and single-doc rules)
+    function isBootstrapAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'enithmenco@gmail.com';
+    }
+
+    // Full Admin check (For single-document operations ONLY; never call inside allow list)
+    function isAdmin() {
+      return isBootstrapAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Blueprint Validation Helpers (Synchronized with firebase-blueprint.json)
+    // -------------------------------------------------------------------------
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['userId', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['userId', 'email', 'createdAt']) &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.userId == request.auth.uid &&
+        data.email is string && data.email.size() >= 5 && data.email.size() <= 254 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidApprenticeProfile(data, ownerUid) {
+      return data.keys().hasAll([
+          'userId', 'apprenticeName', 'documentCode', 'trainingLevel',
+          'modality', 'regionalCenter', 'bloodType', 'preferredProductiveAlt',
+          'representationRole', 'differentialFocus', 'commitmentAccepted',
+          'bioGoal', 'selectedFichaId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'userId', 'apprenticeName', 'documentCode', 'trainingLevel',
+          'modality', 'regionalCenter', 'bloodType', 'preferredProductiveAlt',
+          'representationRole', 'differentialFocus', 'commitmentAccepted',
+          'bioGoal', 'selectedFichaId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.userId == ownerUid &&
+        data.apprenticeName is string && data.apprenticeName.size() >= 2 && data.apprenticeName.size() <= 100 &&
+        data.documentCode is string && data.documentCode.size() >= 4 && data.documentCode.size() <= 24 &&
+        data.documentCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.trainingLevel is string && data.trainingLevel.size() <= 40 &&
+        data.trainingLevel in [
+          'Tecnólogo',
+          'Técnico',
+          'Operario',
+          'Auxiliar',
+          'Especialización Tecnológica'
+        ] &&
+        data.modality is string && data.modality.size() <= 20 &&
+        data.modality in ['Presencial', 'Virtual', 'A Distancia'] &&
+        data.regionalCenter is string && data.regionalCenter.size() >= 3 && data.regionalCenter.size() <= 140 &&
+        data.bloodType is string && data.bloodType.size() <= 5 &&
+        data.bloodType in ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'] &&
+        data.preferredProductiveAlt is string && data.preferredProductiveAlt.size() <= 80 &&
+        data.preferredProductiveAlt in [
+          'Contrato de Aprendizaje Laboral Especial (Dec. 0223/2026)',
+          'Vínculo Formativo o Laboral',
+          'Proyecto Productivo / Fondo Emprender',
+          'Prácticas Economía Popular / CampeSENA',
+          'Monitoría SENA',
+          'Pasantía Institucional'
+        ] &&
+        data.representationRole is string && data.representationRole.size() <= 50 &&
+        data.representationRole in [
+          'Aprendiz en Formación',
+          'Vocero Principal de Ficha',
+          'Vocero Suplente de Ficha',
+          'Vocero de Enfoque Diferencial',
+          'Representante de Centro'
+        ] &&
+        data.differentialFocus is string && data.differentialFocus.size() <= 70 &&
+        data.differentialFocus in [
+          'Ninguno / General',
+          'Jóvenes en Acción / Renta Joven',
+          'Comunidad Campesina (CampeSENA)',
+          'Pueblos Étnicos (Indígena / NARP / Rrom)',
+          'Persona con Discapacidad (Ajustes Razonables)',
+          'Mujer Cabeza de Familia / Enfoque de Género',
+          'Víctima del Conflicto Armado'
+        ] &&
+        data.commitmentAccepted is bool &&
+        data.bioGoal is string && data.bioGoal.size() <= 280 &&
+        data.selectedFichaId is string && data.selectedFichaId.size() <= 128 &&
+        data.selectedFichaId.matches('^[a-zA-Z0-9_\\-]*$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGfpiF165Submission(data, ownerUid) {
+      return data.keys().hasAll([
+          'userId', 'fichaId', 'instructorId', 'procedureType', 'filingCode',
+          'apprenticeName', 'documentType', 'documentCode', 'contactEmail',
+          'contactPhone', 'residenceAddress', 'fichaCode', 'programName',
+          'trainingLevel', 'regionalCenter', 'jornada', 'lectivaStartDate',
+          'lectivaEndDate', 'productivaStartDate', 'productivaEndDate',
+          'selectedAlternative', 'alternativeJustification', 'companyName',
+          'companyNit', 'companyCity', 'companyContactName', 'companySector',
+          'apprenticeSignatureAccepted', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'userId', 'fichaId', 'instructorId', 'procedureType', 'filingCode',
+          'apprenticeName', 'documentType', 'documentCode', 'contactEmail',
+          'contactPhone', 'residenceAddress', 'fichaCode', 'programName',
+          'trainingLevel', 'regionalCenter', 'jornada', 'lectivaStartDate',
+          'lectivaEndDate', 'productivaStartDate', 'productivaEndDate',
+          'selectedAlternative', 'alternativeJustification', 'companyName',
+          'companyNit', 'companyCity', 'companyContactName', 'companySector',
+          'apprenticeSignatureAccepted', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.userId == ownerUid &&
+        data.fichaId is string && data.fichaId.size() <= 128 &&
+        data.fichaId.matches('^[a-zA-Z0-9_\\-]*$') &&
+        data.instructorId is string && data.instructorId.size() <= 128 &&
+        data.instructorId.matches('^[a-zA-Z0-9_\\-]*$') &&
+        data.procedureType is string && data.procedureType.size() <= 40 &&
+        data.procedureType in [
+          'Selección Inicial (Inducción)',
+          'Modificación de Alternativa'
+        ] &&
+        data.filingCode is string && data.filingCode.size() >= 6 && data.filingCode.size() <= 32 &&
+        data.filingCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.apprenticeName is string && data.apprenticeName.size() >= 2 && data.apprenticeName.size() <= 100 &&
+        data.documentType is string && data.documentType.size() <= 10 &&
+        data.documentType in ['CC', 'TI', 'CE', 'PPT', 'PEP'] &&
+        data.documentCode is string && data.documentCode.size() >= 4 && data.documentCode.size() <= 24 &&
+        data.documentCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.contactEmail is string && data.contactEmail.size() <= 254 &&
+        data.contactPhone is string && data.contactPhone.size() <= 30 &&
+        data.contactPhone.matches('^[0-9+()\\-\\s]*$') &&
+        data.residenceAddress is string && data.residenceAddress.size() <= 140 &&
+        data.fichaCode is string && data.fichaCode.size() >= 4 && data.fichaCode.size() <= 20 &&
+        data.fichaCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.programName is string && data.programName.size() >= 3 && data.programName.size() <= 140 &&
+        data.trainingLevel is string && data.trainingLevel.size() <= 40 &&
+        data.trainingLevel in [
+          'Tecnólogo',
+          'Técnico',
+          'Operario',
+          'Auxiliar',
+          'Especialización Tecnológica'
+        ] &&
+        data.regionalCenter is string && data.regionalCenter.size() >= 3 && data.regionalCenter.size() <= 140 &&
+        data.jornada is string && data.jornada.size() <= 20 &&
+        data.jornada in ['Diurna', 'Mixta', 'Nocturna', 'Virtual'] &&
+        data.lectivaStartDate is string && data.lectivaStartDate.size() == 10 &&
+        data.lectivaStartDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.lectivaEndDate is string && data.lectivaEndDate.size() == 10 &&
+        data.lectivaEndDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.productivaStartDate is string && data.productivaStartDate.size() == 10 &&
+        data.productivaStartDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.productivaEndDate is string && data.productivaEndDate.size() == 10 &&
+        data.productivaEndDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.selectedAlternative is string && data.selectedAlternative.size() <= 80 &&
+        data.selectedAlternative in [
+          'Contrato de Aprendizaje Laboral Especial (Dec. 0223/2026)',
+          'Vínculo Formativo o Laboral',
+          'Proyecto Productivo / Fondo Emprender',
+          'Prácticas Economía Popular / CampeSENA',
+          'Monitoría SENA',
+          'Pasantía Institucional'
+        ] &&
+        data.alternativeJustification is string && data.alternativeJustification.size() <= 400 &&
+        data.companyName is string && data.companyName.size() <= 120 &&
+        data.companyNit is string && data.companyNit.size() <= 24 &&
+        data.companyNit.matches('^[0-9A-Za-z\\-]*$') &&
+        data.companyCity is string && data.companyCity.size() <= 80 &&
+        data.companyContactName is string && data.companyContactName.size() <= 100 &&
+        data.companySector is string && data.companySector.size() <= 50 &&
+        data.companySector in [
+          'Por definir en Etapa Lectiva',
+          'Tecnología y Software',
+          'Industria y Manufactura',
+          'Comercio y Servicios',
+          'Economía Popular / Agropecuario',
+          'Entidad Pública / SENA'
+        ] &&
+        data.apprenticeSignatureAccepted is bool &&
+        data.status is string && data.status.size() <= 30 &&
+        data.status in ['borrador', 'radicado', 'validado_coordinacion'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidFicha(data) {
+      return data.keys().hasAll([
+          'fichaCode', 'programName', 'centerName', 'jornada',
+          'instructorId', 'instructorName', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'fichaCode', 'programName', 'centerName', 'jornada',
+          'instructorId', 'instructorName', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.fichaCode is string && data.fichaCode.size() >= 4 && data.fichaCode.size() <= 20 &&
+        data.fichaCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.programName is string && data.programName.size() >= 3 && data.programName.size() <= 140 &&
+        data.centerName is string && data.centerName.size() >= 3 && data.centerName.size() <= 140 &&
+        data.jornada is string && data.jornada.size() <= 20 &&
+        data.jornada in ['Diurna', 'Mixta', 'Nocturna', 'Virtual'] &&
+        data.instructorId is string && data.instructorId.size() >= 1 && data.instructorId.size() <= 128 &&
+        data.instructorId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.instructorName is string && data.instructorName.size() >= 2 && data.instructorName.size() <= 100 &&
+        data.status is string && data.status.size() <= 20 &&
+        data.status in ['activa', 'cerrada'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidFichaSheetLink(data, targetFichaId) {
+      return data.keys().hasAll([
+          'fichaId', 'fichaCode', 'instructorId', 'spreadsheetId',
+          'spreadsheetUrl', 'spreadsheetTitle', 'templateSourceName',
+          'lastSyncedRows', 'lastDataSignature', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'fichaId', 'fichaCode', 'instructorId', 'spreadsheetId',
+          'spreadsheetUrl', 'spreadsheetTitle', 'templateSourceName',
+          'lastSyncedRows', 'lastDataSignature', 'createdAt', 'updatedAt'
+        ]) &&
+        data.fichaId is string && data.fichaId.size() >= 1 && data.fichaId.size() <= 128 &&
+        data.fichaId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.fichaId == targetFichaId &&
+        data.fichaCode is string && data.fichaCode.size() >= 4 && data.fichaCode.size() <= 20 &&
+        data.fichaCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.instructorId is string && data.instructorId.size() >= 1 && data.instructorId.size() <= 128 &&
+        data.instructorId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.spreadsheetId is string && data.spreadsheetId.size() >= 10 && data.spreadsheetId.size() <= 128 &&
+        data.spreadsheetId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.spreadsheetUrl is string && data.spreadsheetUrl.size() >= 20 && data.spreadsheetUrl.size() <= 300 &&
+        data.spreadsheetTitle is string && data.spreadsheetTitle.size() >= 3 && data.spreadsheetTitle.size() <= 160 &&
+        data.templateSourceName is string && data.templateSourceName.size() <= 140 &&
+        data.lastSyncedRows is int && data.lastSyncedRows >= 0 && data.lastSyncedRows <= 5000 &&
+        data.lastDataSignature is string && data.lastDataSignature.size() <= 128 &&
+        data.lastDataSignature.matches('^[a-zA-Z0-9_\\-]*$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEnrollment(data, parentFichaId) {
+      return data.keys().hasAll([
+          'fichaId', 'fichaCode', 'programName', 'authorId', 'instructorId',
+          'apprenticeName', 'documentCode', 'completedModules', 'evalScore',
+          'dimIdentity', 'dimValues', 'dimRights', 'dimDuties',
+          'attemptsCount', 'appropriationState', 'instructorObservation',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'fichaId', 'fichaCode', 'programName', 'authorId', 'instructorId',
+          'apprenticeName', 'documentCode', 'completedModules', 'evalScore',
+          'dimIdentity', 'dimValues', 'dimRights', 'dimDuties',
+          'attemptsCount', 'appropriationState', 'instructorObservation',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.fichaId is string && data.fichaId.size() >= 1 && data.fichaId.size() <= 128 &&
+        data.fichaId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.fichaId == parentFichaId &&
+        data.fichaCode is string && data.fichaCode.size() >= 4 && data.fichaCode.size() <= 20 &&
+        data.fichaCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.programName is string && data.programName.size() >= 3 && data.programName.size() <= 140 &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.authorId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.instructorId is string && data.instructorId.size() >= 1 && data.instructorId.size() <= 128 &&
+        data.instructorId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.apprenticeName is string && data.apprenticeName.size() >= 2 && data.apprenticeName.size() <= 100 &&
+        data.documentCode is string && data.documentCode.size() >= 4 && data.documentCode.size() <= 24 &&
+        data.documentCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.completedModules is list &&
+        data.completedModules.size() <= 4 &&
+        data.completedModules.hasOnly(['identidad', 'valores', 'derechos', 'deberes']) &&
+        (data.completedModules.size() == 0 || (data.completedModules[0] is string && data.completedModules[0].size() <= 30)) &&
+        data.evalScore is int && data.evalScore >= 0 && data.evalScore <= 100 &&
+        data.dimIdentity is int && data.dimIdentity >= 0 && data.dimIdentity <= 100 &&
+        data.dimValues is int && data.dimValues >= 0 && data.dimValues <= 100 &&
+        data.dimRights is int && data.dimRights >= 0 && data.dimRights <= 100 &&
+        data.dimDuties is int && data.dimDuties >= 0 && data.dimDuties <= 100 &&
+        data.attemptsCount is int && data.attemptsCount >= 0 && data.attemptsCount <= 50 &&
+        data.appropriationState is string && data.appropriationState.size() <= 30 &&
+        data.appropriationState in ['en_proceso', 'apropiado', 'plan_mejoramiento', 'certificado'] &&
+        data.instructorObservation is string && data.instructorObservation.size() <= 500 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEvaluation(data) {
+      return data.keys().hasAll([
+          'authorId', 'fichaId', 'instructorId', 'fichaCode', 'apprenticeName',
+          'score', 'passed', 'dimIdentity', 'dimValues', 'dimRights', 'dimDuties',
+          'correctCount', 'totalQuestions', 'durationSeconds', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'authorId', 'fichaId', 'instructorId', 'fichaCode', 'apprenticeName',
+          'score', 'passed', 'dimIdentity', 'dimValues', 'dimRights', 'dimDuties',
+          'correctCount', 'totalQuestions', 'durationSeconds', 'createdAt'
+        ]) &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.authorId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.authorId == request.auth.uid &&
+        data.fichaId is string && data.fichaId.size() >= 1 && data.fichaId.size() <= 128 &&
+        data.fichaId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.instructorId is string && data.instructorId.size() >= 1 && data.instructorId.size() <= 128 &&
+        data.instructorId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.fichaCode is string && data.fichaCode.size() >= 4 && data.fichaCode.size() <= 20 &&
+        data.fichaCode.matches('^[0-9A-Za-z\\-]+$') &&
+        data.apprenticeName is string && data.apprenticeName.size() >= 2 && data.apprenticeName.size() <= 100 &&
+        data.score is int && data.score >= 0 && data.score <= 100 &&
+        data.passed is bool &&
+        ((data.score >= 70 && data.passed == true) || (data.score < 70 && data.passed == false)) &&
+        data.dimIdentity is int && data.dimIdentity >= 0 && data.dimIdentity <= 100 &&
+        data.dimValues is int && data.dimValues >= 0 && data.dimValues <= 100 &&
+        data.dimRights is int && data.dimRights >= 0 && data.dimRights <= 100 &&
+        data.dimDuties is int && data.dimDuties >= 0 && data.dimDuties <= 100 &&
+        data.correctCount is int && data.correctCount >= 0 && data.correctCount <= 10 &&
+        data.totalQuestions is int && data.totalQuestions == 10 &&
+        data.durationSeconds is int && data.durationSeconds >= 1 && data.durationSeconds <= 7200 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['grantedBy', 'createdAt']) &&
+        data.keys().hasOnly(['grantedBy', 'createdAt']) &&
+        data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128 &&
+        data.grantedBy.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.grantedBy == request.auth.uid &&
+        data.createdAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 1: Isolated PII Vault (/users_private/{userId})
+    // -------------------------------------------------------------------------
+    match /users_private/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && (
+        request.auth.uid == userId || isAdmin()
+      );
+      allow list: if false;
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidUserPrivate(incoming()) &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 1B: Apprentice Profile (/apprentice_profiles/{userId})
+    // -------------------------------------------------------------------------
+    match /apprentice_profiles/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && (
+        request.auth.uid == userId || isAdmin()
+      );
+      allow list: if false;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidApprenticeProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          incoming().selectedFichaId == '' ||
+          exists(/databases/$(database)/documents/fichas/$(incoming().selectedFichaId))
+        );
+
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidApprenticeProfile(incoming(), userId) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().selectedFichaId == '' ||
+          exists(/databases/$(database)/documents/fichas/$(incoming().selectedFichaId))
+        ) && (
+          (
+            request.auth.uid == userId &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'apprenticeName', 'documentCode', 'trainingLevel', 'modality',
+              'regionalCenter', 'bloodType', 'preferredProductiveAlt',
+              'representationRole', 'differentialFocus', 'commitmentAccepted',
+              'bioGoal', 'selectedFichaId', 'updatedAt'
+            ])
+          ) ||
+          isAdmin()
+        );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 1C: Formato GFPI-F-165 Submissions (/gfpi_f_165_submissions/{userId})
+    // -------------------------------------------------------------------------
+    match /gfpi_f_165_submissions/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && (
+        request.auth.uid == userId ||
+        isAdmin() || (
+          resource != null &&
+          existing().fichaId != '' &&
+          existing().instructorId == request.auth.uid &&
+          exists(/databases/$(database)/documents/fichas/$(existing().fichaId)) &&
+          get(/databases/$(database)/documents/fichas/$(existing().fichaId)).data.instructorId == request.auth.uid
+        )
+      );
+
+      allow list: if isVerifiedUser() && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.fichaId != '' && resource.data.instructorId == request.auth.uid) ||
+        isBootstrapAdmin()
+      );
+
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidGfpiF165Submission(incoming(), userId) &&
+        incoming().status in ['borrador', 'radicado'] &&
+        (incoming().status != 'radicado' || incoming().apprenticeSignatureAccepted == true) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          (incoming().fichaId == '' && incoming().instructorId == '') || (
+            incoming().fichaId != '' &&
+            exists(/databases/$(database)/documents/fichas/$(incoming().fichaId)) &&
+            get(/databases/$(database)/documents/fichas/$(incoming().fichaId)).data.status == 'activa' &&
+            incoming().instructorId == get(/databases/$(database)/documents/fichas/$(incoming().fichaId)).data.instructorId
+          )
+        );
+
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidGfpiF165Submission(incoming(), userId) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (incoming().status != 'radicado' || incoming().apprenticeSignatureAccepted == true) &&
+        (
+          (incoming().fichaId == '' && incoming().instructorId == '') || (
+            incoming().fichaId != '' &&
+            exists(/databases/$(database)/documents/fichas/$(incoming().fichaId)) &&
+            incoming().instructorId == get(/databases/$(database)/documents/fichas/$(incoming().fichaId)).data.instructorId
+          )
+        ) && (
+          isAdmin() || (
+            existing().status != 'validado_coordinacion' &&
+            request.auth.uid == userId &&
+            incoming().status in ['borrador', 'radicado'] &&
+            (
+              incoming().fichaId == '' ||
+              get(/databases/$(database)/documents/fichas/$(incoming().fichaId)).data.status == 'activa'
+            ) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'fichaId', 'instructorId', 'procedureType', 'filingCode',
+              'apprenticeName', 'documentType', 'documentCode', 'contactEmail',
+              'contactPhone', 'residenceAddress', 'fichaCode', 'programName',
+              'trainingLevel', 'regionalCenter', 'jornada', 'lectivaStartDate',
+              'lectivaEndDate', 'productivaStartDate', 'productivaEndDate',
+              'selectedAlternative', 'alternativeJustification', 'companyName',
+              'companyNit', 'companyCity', 'companyContactName', 'companySector',
+              'apprenticeSignatureAccepted', 'status', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 2: Trusted Admins (/admins/{adminId})
+    // -------------------------------------------------------------------------
+    match /admins/{adminId} {
+      allow get: if isVerifiedUser() && isValidId(adminId) && (
+        request.auth.uid == adminId || isAdmin()
+      );
+      allow list: if false;
+      allow create: if isBootstrapAdmin() &&
+        isValidId(adminId) &&
+        isValidAdminRecord(incoming()) &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 3: SENA Fichas (/fichas/{fichaId}) — Master Parent Resource
+    // -------------------------------------------------------------------------
+    match /fichas/{fichaId} {
+      allow get: if isVerifiedUser() && isValidId(fichaId) && (
+        isAdmin() || (
+          resource != null && (
+            existing().status == 'activa' ||
+            existing().instructorId == request.auth.uid
+          )
+        )
+      );
+
+      allow list: if isVerifiedUser() && (
+        resource.data.status == 'activa' ||
+        resource.data.instructorId == request.auth.uid ||
+        isBootstrapAdmin()
+      );
+
+      allow create: if isVerifiedUser() &&
+        isValidId(fichaId) &&
+        isValidFicha(incoming()) &&
+        incoming().instructorId == request.auth.uid &&
+        incoming().status == 'activa' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser() &&
+        isValidId(fichaId) &&
+        isValidFicha(incoming()) &&
+        incoming().instructorId == existing().instructorId &&
+        incoming().fichaCode == existing().fichaCode &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            existing().status != 'cerrada' &&
+            existing().instructorId == request.auth.uid && (
+              // Action 1: Update Ficha academic metadata
+              incoming().diff(existing()).affectedKeys().hasOnly(['programName', 'centerName', 'jornada', 'updatedAt']) ||
+              // Action 2: Close Ficha (Terminal transition)
+              (incoming().status == 'cerrada' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+            )
+          )
+        );
+
+      allow delete: if false;
+
+      // -----------------------------------------------------------------------
+      // Subcollection 3A: Enrollments (/fichas/{fichaId}/enrollments/{enrollmentId})
+      // Enforces Pillar 1 Master Gate via parent Ficha lookup
+      // -----------------------------------------------------------------------
+      match /enrollments/{enrollmentId} {
+        allow get: if isVerifiedUser() &&
+          isValidId(fichaId) &&
+          isValidId(enrollmentId) &&
+          exists(/databases/$(database)/documents/fichas/$(fichaId)) && (
+            (resource == null && enrollmentId == 'enr_' + request.auth.uid) ||
+            (resource != null && existing().authorId == request.auth.uid) ||
+            get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId == request.auth.uid ||
+            isAdmin()
+          );
+
+        allow list: if isVerifiedUser() &&
+          isValidId(fichaId) && (
+            resource.data.authorId == request.auth.uid ||
+            resource.data.instructorId == request.auth.uid ||
+            isBootstrapAdmin()
+          );
+
+        allow create: if isVerifiedUser() &&
+          isValidId(fichaId) &&
+          isValidId(enrollmentId) &&
+          isValidEnrollment(incoming(), fichaId) &&
+          incoming().authorId == request.auth.uid &&
+          incoming().appropriationState in ['en_proceso', 'apropiado', 'plan_mejoramiento'] &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/fichas/$(fichaId)) &&
+          get(/databases/$(database)/documents/fichas/$(fichaId)).data.status == 'activa' &&
+          incoming().instructorId == get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId;
+
+        allow update: if isVerifiedUser() &&
+          isValidId(fichaId) &&
+          isValidId(enrollmentId) &&
+          isValidEnrollment(incoming(), fichaId) &&
+          incoming().fichaId == existing().fichaId &&
+          incoming().fichaCode == existing().fichaCode &&
+          incoming().authorId == existing().authorId &&
+          incoming().instructorId == existing().instructorId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/fichas/$(fichaId)) && (
+            isAdmin() || (
+              existing().appropriationState != 'certificado' &&
+              get(/databases/$(database)/documents/fichas/$(fichaId)).data.status == 'activa' && (
+                // Tier 2 Action A: Apprentice updates profile identity or completed induction modules
+                (
+                  existing().authorId == request.auth.uid &&
+                  incoming().diff(existing()).affectedKeys().hasOnly([
+                    'apprenticeName', 'documentCode', 'completedModules', 'updatedAt'
+                  ])
+                ) ||
+                // Tier 2 Action B: Apprentice records interactive evaluation outcome
+                (
+                  existing().authorId == request.auth.uid &&
+                  incoming().appropriationState in ['en_proceso', 'apropiado', 'plan_mejoramiento'] &&
+                  incoming().diff(existing()).affectedKeys().hasOnly([
+                    'apprenticeName', 'documentCode', 'completedModules', 'evalScore',
+                    'dimIdentity', 'dimValues', 'dimRights', 'dimDuties',
+                    'attemptsCount', 'appropriationState', 'updatedAt'
+                  ])
+                ) ||
+                // Tier 1 Action C: Ficha Instructor adds pedagogical observation or certifies appropriation
+                (
+                  existing().instructorId == request.auth.uid &&
+                  get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId == request.auth.uid &&
+                  (incoming().appropriationState != 'certificado' || existing().evalScore >= 70) &&
+                  incoming().diff(existing()).affectedKeys().hasOnly([
+                    'appropriationState', 'instructorObservation', 'updatedAt'
+                  ])
+                )
+              )
+            )
+          );
+
+        allow delete: if false;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 3B: Instructor-Isolated Sheet Links (/ficha_sheet_links/{fichaId})
+    // -------------------------------------------------------------------------
+    match /ficha_sheet_links/{fichaId} {
+      allow get: if isVerifiedUser() &&
+        isValidId(fichaId) &&
+        exists(/databases/$(database)/documents/fichas/$(fichaId)) && (
+          get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId == request.auth.uid ||
+          isAdmin()
+        );
+
+      allow list: if false;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(fichaId) &&
+        isValidFichaSheetLink(incoming(), fichaId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/fichas/$(fichaId)) &&
+        incoming().instructorId == get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId && (
+          incoming().instructorId == request.auth.uid ||
+          isAdmin()
+        );
+
+      allow update: if isVerifiedUser() &&
+        isValidId(fichaId) &&
+        isValidFichaSheetLink(incoming(), fichaId) &&
+        incoming().fichaId == existing().fichaId &&
+        incoming().fichaCode == existing().fichaCode &&
+        incoming().instructorId == existing().instructorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/fichas/$(fichaId)) && (
+          isAdmin() || (
+            existing().instructorId == request.auth.uid &&
+            get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'spreadsheetId', 'spreadsheetUrl', 'spreadsheetTitle',
+              'templateSourceName', 'lastSyncedRows', 'lastDataSignature', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 4: Immutable Evaluation Attempts (/evaluations/{evalId})
+    // -------------------------------------------------------------------------
+    match /evaluations/{evalId} {
+      allow get: if isVerifiedUser() && isValidId(evalId) && (
+        isAdmin() || (
+          resource != null && (
+            existing().authorId == request.auth.uid ||
+            existing().instructorId == request.auth.uid
+          )
+        )
+      );
+
+      allow list: if isVerifiedUser() && (
+        resource.data.authorId == request.auth.uid ||
+        resource.data.instructorId == request.auth.uid ||
+        isBootstrapAdmin()
+      );
+
+      allow create: if isVerifiedUser() &&
+        isValidId(evalId) &&
+        isValidEvaluation(incoming()) &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/fichas/$(incoming().fichaId)) &&
+        get(/databases/$(database)/documents/fichas/$(incoming().fichaId)).data.status == 'activa' &&
+        incoming().instructorId == get(/databases/$(database)/documents/fichas/$(incoming().fichaId)).data.instructorId;
+
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

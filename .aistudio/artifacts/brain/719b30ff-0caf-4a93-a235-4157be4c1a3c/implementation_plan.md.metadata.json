@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan de implementación para crear automáticamente una hoja de cálculo estructurada en Google Drive (Google Sheets) alineada con el formato oficial SENA GFPI-F-165 y sincronizar en tiempo real las respuestas de los aprendices (matrícula en ficha, perfil, evaluación diagnóstica y selección/modificación de alternativa de etapa productiva) desde el panel del instructor.",
+  "updatedAt":  "2026-10-28T16:49:27.157197124Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
