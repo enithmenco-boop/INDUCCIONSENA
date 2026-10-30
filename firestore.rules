@@ -539,7 +539,8 @@ service cloud.firestore {
         incoming().instructorId == request.auth.uid &&
         incoming().status == 'activa' &&
         incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time;
+        incoming().updatedAt == request.time &&
+        isAdmin();
 
       allow update: if isVerifiedUser() &&
         isValidId(fichaId) &&
@@ -593,7 +594,10 @@ service cloud.firestore {
           incoming().updatedAt == request.time &&
           exists(/databases/$(database)/documents/fichas/$(fichaId)) &&
           get(/databases/$(database)/documents/fichas/$(fichaId)).data.status == 'activa' &&
-          incoming().instructorId == get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId;
+          incoming().instructorId == get(/databases/$(database)/documents/fichas/$(fichaId)).data.instructorId && (
+            (enrollmentId == 'enr_' + request.auth.uid && incoming().instructorObservation == '') ||
+            isAdmin()
+          );
 
         allow update: if isVerifiedUser() &&
           isValidId(fichaId) &&

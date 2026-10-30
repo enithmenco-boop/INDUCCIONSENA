@@ -1,3 +1,4 @@
+import type { User } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -323,6 +324,25 @@ export async function ensureUserPrivateVault(uid: string, email: string): Promis
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function checkIsAuthorizedInstructor(
+  user: User | null
+): Promise<boolean> {
+  if (!user || !user.emailVerified) {
+    return false;
+  }
+  if (user.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) {
+    return true;
+  }
+  const safeUid = sanitizeId(user.uid);
+  const path = `admins/${safeUid}`;
+  try {
+    const snap = await getDoc(doc(db, 'admins', safeUid));
+    return snap.exists();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
   }
 }
 

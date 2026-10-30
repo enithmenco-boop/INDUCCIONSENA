@@ -11,6 +11,7 @@ import {
   Edit3,
   FileCheck2,
   FileSpreadsheet,
+  FileText,
   RefreshCw,
   Scale,
   ShieldCheck,
@@ -22,6 +23,7 @@ import {
   SenaEscudo,
   SenaLogo,
 } from './SenaLogo';
+import { downloadApprenticeTrajectoryPdf } from '../lib/inductionPdfReport';
 import type {
   ApprenticeProfileData,
   EnrollmentRecord,
@@ -162,6 +164,7 @@ export function ApprenticeProfile({
   const [formError, setFormError] = useState<string | null>(null);
   const [formSavedMsg, setFormSavedMsg] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<boolean>(false);
+  const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
   useEffect(() => {
     setFormState(profile);
@@ -381,6 +384,51 @@ export function ApprenticeProfile({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  }
+
+  async function handleDownloadTrajectoryPdf() {
+    if (downloadingPdf) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadApprenticeTrajectoryPdf({
+        profile,
+        userDisplayName: user?.displayName ?? null,
+        selectedFicha: selectedFicha
+          ? {
+              fichaCode: selectedFicha.fichaCode,
+              programName: selectedFicha.programName,
+              centerName: selectedFicha.centerName,
+              jornada: selectedFicha.jornada,
+            }
+          : null,
+        currentEnrollment: currentEnrollment
+          ? {
+              appropriationState: currentEnrollment.appropriationState,
+              evalScore: currentEnrollment.evalScore,
+              dimIdentity: currentEnrollment.dimIdentity,
+              dimValues: currentEnrollment.dimValues,
+              dimRights: currentEnrollment.dimRights,
+              dimDuties: currentEnrollment.dimDuties,
+              attemptsCount: currentEnrollment.attemptsCount,
+            }
+          : null,
+        gfpiSubmission: gfpiSubmission
+          ? {
+              selectedAlternative: gfpiSubmission.selectedAlternative,
+              procedureType: gfpiSubmission.procedureType,
+              status: gfpiSubmission.status,
+              filingCode: gfpiSubmission.filingCode,
+              productivaStartDate: gfpiSubmission.productivaStartDate,
+              productivaEndDate: gfpiSubmission.productivaEndDate,
+            }
+          : null,
+        completedModules,
+        latestSummary,
+        evaluationHistory: historyRows,
+      });
+    } finally {
+      setDownloadingPdf(false);
+    }
   }
 
   return (
@@ -655,22 +703,36 @@ export function ApprenticeProfile({
                 </svg>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <div className="space-y-2.5 pt-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleDownloadCarneHtml}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#15803d] hover:bg-emerald-800 dark:bg-[#16a34a] dark:hover:bg-[#15803d] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar carné digital
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('editar')}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    Editar datos
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  onClick={handleDownloadCarneHtml}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#15803d] hover:bg-emerald-800 dark:bg-[#16a34a] dark:hover:bg-[#15803d] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  disabled={downloadingPdf}
+                  onClick={() => void handleDownloadTrajectoryPdf()}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <Download className="w-4 h-4" />
-                  Descargar carné digital
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('editar')}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <Edit3 className="w-4 h-4" />
-                  Editar datos
+                  <FileText className="w-4 h-4 text-[#15803d] dark:text-[#4ade80]" />
+                  {downloadingPdf
+                    ? 'Generando resumen PDF...'
+                    : 'Descargar trayectoria de inducción (PDF)'}
                 </button>
               </div>
             </div>
@@ -770,14 +832,25 @@ export function ApprenticeProfile({
                     {completedModules.length} de 4 dimensiones estudiadas · Meta evaluativa mínima: 70%
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('evaluacion')}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#15803d] dark:text-[#4ade80] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <ClipboardCheck className="w-4 h-4" />
-                  Ir a evaluación
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={downloadingPdf}
+                    onClick={() => void handleDownloadTrajectoryPdf()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-[#15803d] dark:text-[#4ade80]" />
+                    {downloadingPdf ? 'Generando PDF...' : 'Resumen PDF'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('evaluacion')}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#15803d] dark:text-[#4ade80] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <ClipboardCheck className="w-4 h-4" />
+                    Ir a evaluación
+                  </button>
+                </div>
               </div>
 
               <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800">
@@ -1325,14 +1398,25 @@ export function ApprenticeProfile({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => onNavigate('evaluacion')}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#15803d] hover:bg-emerald-800 dark:bg-[#16a34a] dark:hover:bg-[#15803d] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Award className="w-4 h-4" />
-                {historyRows.length === 0 ? 'Presentar evaluación' : 'Nuevo intento evaluativo'}
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={downloadingPdf}
+                  onClick={() => void handleDownloadTrajectoryPdf()}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-[#15803d] dark:text-[#4ade80]" />
+                  {downloadingPdf ? 'Generando PDF...' : 'Descargar resumen PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('evaluacion')}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#15803d] hover:bg-emerald-800 dark:bg-[#16a34a] dark:hover:bg-[#15803d] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Award className="w-4 h-4" />
+                  {historyRows.length === 0 ? 'Presentar evaluación' : 'Nuevo intento evaluativo'}
+                </button>
+              </div>
             </div>
 
             {dimensionsToReinforce.length > 0 && (

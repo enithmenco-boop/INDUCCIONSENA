@@ -12,11 +12,7 @@ import {
 import { EVALUATION_QUESTIONS } from '../data/senaContent';
 import type { FichaRecord } from '../lib/inductionStore';
 import type { InductionModuleId } from '../lib/validation';
-import {
-  SENA_OFFICIAL_ESCUDO_URL,
-  SENA_OFFICIAL_LOGO_DATA_URI,
-  SenaLogo,
-} from './SenaLogo';
+import { SenaLogo } from './SenaLogo';
 
 export interface EvaluationSummaryPayload {
   score: number;
@@ -38,19 +34,19 @@ interface InteractiveEvaluationProps {
   saveFeedback: string | null;
   latestSummary: EvaluationSummaryPayload | null;
   onCompleteEvaluation: (summary: EvaluationSummaryPayload) => Promise<void>;
+  onDownloadTrajectoryPdf: (overrideSummary?: EvaluationSummaryPayload) => Promise<void>;
   onNavigateModule: (target: 'identidad' | 'derechos') => void;
   onRequestSignIn: () => void;
 }
 
 export function InteractiveEvaluation({
-  apprenticeName,
-  documentCode,
   selectedFicha,
   isSignedIn,
   isSaving,
   saveFeedback,
   latestSummary,
   onCompleteEvaluation,
+  onDownloadTrajectoryPdf,
   onNavigateModule,
   onRequestSignIn,
 }: InteractiveEvaluationProps) {
@@ -61,6 +57,7 @@ export function InteractiveEvaluation({
   const [elapsedSec, setElapsedSec] = useState<number>(0);
   const [submittedResult, setSubmittedResult] =
     useState<EvaluationSummaryPayload | null>(latestSummary);
+  const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
   const isReviewingResult = submittedResult !== null;
 
@@ -123,74 +120,14 @@ export function InteractiveEvaluation({
     setSubmittedResult(null);
   }
 
-  function handleDownloadConstancia() {
-    if (!submittedResult) return;
-    const fichaText = selectedFicha
-      ? `${selectedFicha.fichaCode} - ${selectedFicha.programName}`
-      : 'Modo exploración autónoma';
-    const judgmentText = submittedResult.passed
-      ? 'APROBADO (A) — Apropió satisfactoriamente el proceso de inducción'
-      : 'NO APROBADO (D) — Requiere Plan de Mejoramiento focalizado';
-
-    const html = `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <title>Constancia Diagnóstica de Inducción SENA</title>
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; color: #0f172a; background: #f8fafc; padding: 40px; }
-    .sheet { max-width: 760px; margin: 0 auto; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 36px; }
-    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 24px; }
-    .logo { width: 64px; height: 64px; }
-    .meta { font-size: 13px; color: #475569; line-height: 1.6; }
-    .score { font-size: 36px; font-weight: 700; color: #15803d; margin: 8px 0; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
-    .box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; background: #f8fafc; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <div class="sheet">
-    <div class="header">
-      <div>
-        <div style="font-size:12px;color:#475569;">SERVICIO NACIONAL DE APRENDIZAJE · SENA</div>
-        <h1 style="margin:6px 0 0;font-size:22px;">Diagnóstico de Apropiación de Inducción</h1>
-      </div>
-      <div style="display:flex;align-items:center;gap:14px;">
-        <img src="${SENA_OFFICIAL_ESCUDO_URL}" referrerpolicy="no-referrer" alt="Escudo oficial del SENA" class="logo" style="object-fit:contain;" />
-        <img src="${SENA_OFFICIAL_LOGO_DATA_URI}" alt="Logosímbolo oficial del SENA" class="logo" />
-      </div>
-    </div>
-    <div class="meta">
-      <div><strong>Aprendiz:</strong> ${apprenticeName || 'Aprendiz en sesión demostrativa'}</div>
-      <div><strong>Código Institucional:</strong> ${documentCode || 'Sin registrar'}</div>
-      <div><strong>Ficha de Caracterización:</strong> ${fichaText}</div>
-      <div><strong>Marco Normativo Evaluado:</strong> Reglamento del Aprendiz SENA (Acuerdo 009 de 2024 · Mod. Acuerdo 002 de 2026 · Decreto 0223 de 2026)</div>
-      <div><strong>Fecha de emisión:</strong> ${new Date().toLocaleDateString('es-CO')}</div>
-    </div>
-    <div style="margin-top:24px;padding:16px;border:1px solid #cbd5e1;border-radius:8px;">
-      <div style="font-size:12px;color:#475569;">PUNTAJE GLOBAL DE APROPIACIÓN</div>
-      <div class="score">${submittedResult.score}% (${submittedResult.correctCount}/10 aciertos)</div>
-      <div style="font-size:14px;font-weight:600;">Juicio Evaluativo: ${judgmentText}</div>
-    </div>
-    <div class="grid">
-      <div class="box"><strong>Identidad y Símbolos:</strong> ${submittedResult.dimIdentity}%</div>
-      <div class="box"><strong>Valores e Integridad:</strong> ${submittedResult.dimValues}%</div>
-      <div class="box"><strong>Derechos del Aprendiz:</strong> ${submittedResult.dimRights}%</div>
-      <div class="box"><strong>Deberes y SST:</strong> ${submittedResult.dimDuties}%</div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `constancia_induccion_sena_${submittedResult.score}pct.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  async function handleDownloadConstancia() {
+    if (!submittedResult || downloadingPdf) return;
+    setDownloadingPdf(true);
+    try {
+      await onDownloadTrajectoryPdf(submittedResult);
+    } finally {
+      setDownloadingPdf(false);
+    }
   }
 
   if (isReviewingResult && submittedResult) {
@@ -344,11 +281,11 @@ export function InteractiveEvaluation({
                 </span>
               ) : selectedFicha ? (
                 <span className="text-emerald-800 dark:text-emerald-400 font-medium">
-                  ✓ Resultado vinculado a la Ficha {selectedFicha.fichaCode} para seguimiento en el panel de Instructor.
+                  ✓ Resultado vinculado a tu expediente académico en la Ficha {selectedFicha.fichaCode}.
                 </span>
               ) : (
                 <span>
-                  Resultado registrado en tu perfil actual. Vincula una Ficha en Inicio o Mi Perfil para verlo en el panel docente.
+                  Resultado registrado en tu perfil actual. Vincula tu Ficha en Inicio o en Mi Perfil para consolidar tu expediente.
                 </span>
               )}
             </div>
@@ -366,11 +303,12 @@ export function InteractiveEvaluation({
 
               <button
                 type="button"
-                onClick={handleDownloadConstancia}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                disabled={downloadingPdf}
+                onClick={() => void handleDownloadConstancia()}
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <Download className="w-4 h-4" />
-                Descargar resumen
+                <Download className="w-4 h-4 text-[#15803d] dark:text-[#4ade80]" />
+                {downloadingPdf ? 'Generando PDF...' : 'Descargar resumen PDF'}
               </button>
 
               <button

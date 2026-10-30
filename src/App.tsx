@@ -7,6 +7,7 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardCheck,
+  Download,
   ExternalLink,
   FileSpreadsheet,
   IdCard,
@@ -36,13 +37,16 @@ import { RightsDutiesModule } from './components/RightsDutiesModule';
 import { SenaLogo } from './components/SenaLogo';
 import {
   auth,
+  BOOTSTRAP_ADMIN_EMAIL,
   classifyGoogleAuthError,
   clearWorkspaceAccessToken,
   googleAccountSignIn,
   GoogleAuthErrorDetails,
 } from './lib/firebase';
+import { downloadApprenticeTrajectoryPdf } from './lib/inductionPdfReport';
 import {
   ApprenticeProfileData,
+  checkIsAuthorizedInstructor,
   DEFAULT_APPRENTICE_PROFILE,
   EnrollmentRecord,
   ensureUserPrivateVault,
@@ -51,6 +55,7 @@ import {
   GfpiF165Data,
   GfpiF165Record,
   loadLocalInstructorWorkspace,
+  LOCAL_APPRENTICE_AUTHOR_ID,
   LOCAL_APPRENTICE_ENROLLMENT_ID,
   LOCAL_INSTRUCTOR_STORAGE_KEY,
   LocalInstructorWorkspace,
@@ -67,9 +72,13 @@ import {
   upsertSelfEnrollment,
 } from './lib/inductionStore';
 import {
+  clampScore,
   InductionModuleId,
+  sanitizeCode,
+  sanitizeId,
   sanitizeModulesList,
   SCHEMA_LIMITS,
+  truncateClean,
 } from './lib/validation';
 
 type NavView =
@@ -102,6 +111,7 @@ interface LocalProgressState {
   completedModules: InductionModuleId[];
   latestSummary: EvaluationSummaryPayload | null;
   gfpiSubmission: GfpiF165Record | null;
+  localEvaluations: EvaluationAttemptRecord[];
 }
 
 function loadLocalProgress(): LocalProgressState {
@@ -113,6 +123,7 @@ function loadLocalProgress(): LocalProgressState {
         completedModules: [],
         latestSummary: null,
         gfpiSubmission: null,
+        localEvaluations: [],
       };
     }
     const parsed = JSON.parse(raw) as Partial<LocalProgressState> & {
@@ -145,6 +156,9 @@ function loadLocalProgress(): LocalProgressState {
         parsed.gfpiSubmission && typeof parsed.gfpiSubmission === 'object'
           ? parsed.gfpiSubmission
           : null,
+      localEvaluations: Array.isArray(parsed.localEvaluations)
+        ? parsed.localEvaluations
+        : [],
     };
   } catch {
     return {
@@ -152,6 +166,7 @@ function loadLocalProgress(): LocalProgressState {
       completedModules: [],
       latestSummary: null,
       gfpiSubmission: null,
+      localEvaluations: [],
     };
   }
 }
@@ -165,6 +180,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [authError, setAuthError] = useState<GoogleAuthErrorDetails | null>(null);
+  const [isAuthorizedInstructor, setIsAuthorizedInstructor] = useState<boolean>(false);
 
   const [localState, setLocalState] = useState<LocalProgressState>(() =>
     loadLocalProgress()
@@ -184,6 +200,7 @@ export default function App() {
   );
   const [syncingProgress, setSyncingProgress] = useState<boolean>(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [downloadingHomePdf, setDownloadingHomePdf] = useState<boolean>(false);
 
   const isCloudMode = Boolean(authReady && user && user.emailVerified);
 
@@ -268,6 +285,49 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Verify instructor/admin authorization strictly against BOOTSTRAP_ADMIN_EMAIL and /admins/{uid}
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!authReady || !user || !user.emailVerified) {
+      setIsAuthorizedInstructor(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (user.email?.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase()) {
+      setIsAuthorizedInstructor(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsAuthorizedInstructor(false);
+    void checkIsAuthorizedInstructor(user)
+      .then((authorized) => {
+        if (!cancelled) {
+          setIsAuthorizedInstructor(authorized);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsAuthorizedInstructor(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, user]);
+
+  // Prevent any non-authorized apprentice from remaining on or opening the Instructor view
+  useEffect(() => {
+    if (!isAuthorizedInstructor && activeView === 'instructor') {
+      setActiveView('inicio');
+    }
+  }, [isAuthorizedInstructor, activeView]);
 
   // Subscribe to Apprentice Profile, GFPI-F-165 & Evaluation History when signed in
   useEffect(() => {
@@ -411,13 +471,60 @@ export default function App() {
     ? currentEnrollment
     : localCurrentEnrollment;
 
-  const effectiveEvaluationHistory = isCloudMode
-    ? evaluationHistory
-    : localWorkspace.localEvaluations;
+  // Apprentice-safe projections with all instructor fields stripped at the component boundary
+  const apprenticeActiveFichas = useMemo<FichaRecord[]>(
+    () =>
+      effectiveActiveFichas.map((f) => ({
+        ...f,
+        instructorId: '',
+        instructorName: '',
+      })),
+    [effectiveActiveFichas]
+  );
 
-  const effectiveGfpiSubmission = isCloudMode
-    ? cloudGfpiSubmission ?? localState.gfpiSubmission
-    : localState.gfpiSubmission;
+  const apprenticeSelectedFicha = useMemo<FichaRecord | null>(
+    () =>
+      selectedFicha
+        ? {
+            ...selectedFicha,
+            instructorId: '',
+            instructorName: '',
+          }
+        : null,
+    [selectedFicha]
+  );
+
+  const apprenticeCurrentEnrollment = useMemo<EnrollmentRecord | null>(
+    () =>
+      effectiveCurrentEnrollment
+        ? {
+            ...effectiveCurrentEnrollment,
+            instructorId: '',
+            instructorObservation: '',
+          }
+        : null,
+    [effectiveCurrentEnrollment]
+  );
+
+  const effectiveEvaluationHistory = useMemo<EvaluationAttemptRecord[]>(() => {
+    const rawList = isCloudMode ? evaluationHistory : localState.localEvaluations;
+    return rawList.map((attempt) => ({
+      ...attempt,
+      instructorId: '',
+    }));
+  }, [isCloudMode, evaluationHistory, localState.localEvaluations]);
+
+  const effectiveGfpiSubmission = useMemo<GfpiF165Record | null>(() => {
+    const rawGfpi = isCloudMode
+      ? cloudGfpiSubmission ?? localState.gfpiSubmission
+      : localState.gfpiSubmission;
+    return rawGfpi
+      ? {
+          ...rawGfpi,
+          instructorId: '',
+        }
+      : null;
+  }, [isCloudMode, cloudGfpiSubmission, localState.gfpiSubmission]);
 
   // Hydrate apprentice's own enrollment from selected Cloud Ficha if already enrolled
   useEffect(() => {
@@ -837,9 +944,38 @@ export default function App() {
   }
 
   async function handleCompleteEvaluation(summary: EvaluationSummaryPayload) {
+    const now = Date.now();
+    const cleanScore = clampScore(summary.score);
+    const localAttempt: EvaluationAttemptRecord = {
+      id: sanitizeId(`eval_apr_${now.toString(36)}`),
+      authorId: user?.uid ? sanitizeId(user.uid) : LOCAL_APPRENTICE_AUTHOR_ID,
+      fichaId: selectedFicha?.id ?? '',
+      instructorId: '',
+      fichaCode: selectedFicha
+        ? sanitizeCode(selectedFicha.fichaCode, SCHEMA_LIMITS.fichaCode.maxLength)
+        : 'SIN-FICHA',
+      apprenticeName: truncateClean(
+        localState.profile.apprenticeName.trim() ||
+          user?.displayName ||
+          'Aprendiz en Inducción',
+        SCHEMA_LIMITS.apprenticeName.maxLength
+      ),
+      score: cleanScore,
+      passed: cleanScore >= 70,
+      dimIdentity: clampScore(summary.dimIdentity),
+      dimValues: clampScore(summary.dimValues),
+      dimRights: clampScore(summary.dimRights),
+      dimDuties: clampScore(summary.dimDuties),
+      correctCount: Math.max(0, Math.min(10, Math.round(summary.correctCount))),
+      totalQuestions: 10,
+      durationSeconds: Math.max(1, Math.min(7200, Math.round(summary.durationSeconds))),
+      createdAtMs: now,
+    };
+
     setLocalState((prev) => ({
       ...prev,
       latestSummary: summary,
+      localEvaluations: [localAttempt, ...prev.localEvaluations].slice(0, 30),
     }));
 
     if (isCloudMode && user && cloudSelectedFicha) {
@@ -887,9 +1023,77 @@ export default function App() {
     await handleSyncWithFichaById(selectedFicha.id);
   }
 
+  async function handleDownloadApprenticePdf(
+    overrideSummary?: EvaluationSummaryPayload
+  ) {
+    const effectiveSummary = overrideSummary ?? localState.latestSummary;
+    await downloadApprenticeTrajectoryPdf({
+      profile: localState.profile,
+      userDisplayName: user?.displayName ?? null,
+      selectedFicha: selectedFicha
+        ? {
+            fichaCode: selectedFicha.fichaCode,
+            programName: selectedFicha.programName,
+            centerName: selectedFicha.centerName,
+            jornada: selectedFicha.jornada,
+          }
+        : null,
+      currentEnrollment:
+        !overrideSummary && effectiveCurrentEnrollment
+          ? {
+              appropriationState: effectiveCurrentEnrollment.appropriationState,
+              evalScore: effectiveCurrentEnrollment.evalScore,
+              dimIdentity: effectiveCurrentEnrollment.dimIdentity,
+              dimValues: effectiveCurrentEnrollment.dimValues,
+              dimRights: effectiveCurrentEnrollment.dimRights,
+              dimDuties: effectiveCurrentEnrollment.dimDuties,
+              attemptsCount: effectiveCurrentEnrollment.attemptsCount,
+            }
+          : null,
+      gfpiSubmission: effectiveGfpiSubmission
+        ? {
+            selectedAlternative: effectiveGfpiSubmission.selectedAlternative,
+            procedureType: effectiveGfpiSubmission.procedureType,
+            status: effectiveGfpiSubmission.status,
+            filingCode: effectiveGfpiSubmission.filingCode,
+            productivaStartDate: effectiveGfpiSubmission.productivaStartDate,
+            productivaEndDate: effectiveGfpiSubmission.productivaEndDate,
+          }
+        : null,
+      completedModules: localState.completedModules,
+      latestSummary: effectiveSummary,
+      evaluationHistory: effectiveEvaluationHistory,
+    });
+  }
+
+  async function handleHomePdfDownload() {
+    if (downloadingHomePdf) return;
+    setDownloadingHomePdf(true);
+    try {
+      await handleDownloadApprenticePdf();
+    } finally {
+      setDownloadingHomePdf(false);
+    }
+  }
+
   const moduleCompletionPct = Math.round(
     (localState.completedModules.length / 4) * 100
   );
+
+  const visibleNavItems = useMemo(() => {
+    const base: { id: NavView; label: string }[] = [
+      { id: 'inicio', label: 'Inicio' },
+      { id: 'identidad', label: 'Identidad' },
+      { id: 'derechos', label: 'Reglamento' },
+      { id: 'formato165', label: 'GFPI-F-165' },
+      { id: 'evaluacion', label: 'Evaluación' },
+      { id: 'perfil', label: 'Mi Perfil' },
+    ];
+    if (isAuthorizedInstructor) {
+      base.push({ id: 'instructor', label: 'Instructor' });
+    }
+    return base;
+  }, [isAuthorizedInstructor]);
 
   return (
     <ErrorBoundary>
@@ -916,17 +1120,7 @@ export default function App() {
               aria-label="Navegación principal"
               className="hidden lg:flex items-center gap-5 text-sm font-medium text-slate-600 dark:text-slate-300"
             >
-              {(
-                [
-                  { id: 'inicio', label: 'Inicio' },
-                  { id: 'identidad', label: 'Identidad' },
-                  { id: 'derechos', label: 'Reglamento' },
-                  { id: 'formato165', label: 'GFPI-F-165' },
-                  { id: 'evaluacion', label: 'Evaluación' },
-                  { id: 'perfil', label: 'Mi Perfil' },
-                  { id: 'instructor', label: 'Instructor' },
-                ] as const
-              ).map((nav) => (
+              {visibleNavItems.map((nav) => (
                 <button
                   key={nav.id}
                   type="button"
@@ -973,7 +1167,7 @@ export default function App() {
                 )}
               </button>
 
-              {user && (
+              {user ? (
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
@@ -981,23 +1175,21 @@ export default function App() {
                 >
                   Cerrar sesión
                 </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleGoogleSignIn()}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#15803d] hover:bg-emerald-800 dark:bg-[#16a34a] dark:hover:bg-[#15803d] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  Iniciar sesión
+                </button>
               )}
             </div>
           </div>
 
           {/* Mobile & Tablet compact nav row */}
           <div className="lg:hidden flex items-center gap-4 overflow-x-auto px-6 py-2 border-t border-slate-100 dark:border-slate-800 text-xs font-medium text-slate-600 dark:text-slate-300">
-            {(
-              [
-                { id: 'inicio', label: 'Inicio' },
-                { id: 'identidad', label: 'Identidad' },
-                { id: 'derechos', label: 'Reglamento' },
-                { id: 'formato165', label: 'GFPI-F-165' },
-                { id: 'evaluacion', label: 'Evaluación' },
-                { id: 'perfil', label: 'Mi Perfil' },
-                { id: 'instructor', label: 'Instructor' },
-              ] as const
-            ).map((nav) => (
+            {visibleNavItems.map((nav) => (
               <button
                 key={nav.id}
                 type="button"
@@ -1208,10 +1400,21 @@ export default function App() {
                       Vinculación Rápida del Aprendiz a Ficha de Caracterización
                     </h2>
                     <p className="text-xs text-slate-600 dark:text-slate-300">
-                      Asocia tus datos académicos para que tu instructor visualice tu avance inmediatamente, o personaliza tu caracterización completa en Mi Perfil.
+                      Asocia tus datos académicos a tu Ficha de Caracterización activa o personaliza tu expediente completo en Mi Perfil.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={downloadingHomePdf}
+                      onClick={() => void handleHomePdfDownload()}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-[#15803d] dark:text-[#4ade80]" />
+                      {downloadingHomePdf
+                        ? 'Generando PDF...'
+                        : 'Descargar trayectoria PDF'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setActiveView('perfil')}
@@ -1219,7 +1422,7 @@ export default function App() {
                     >
                       Abrir perfil completo
                     </button>
-                    {effectiveActiveFichas.length === 0 && (
+                    {isAuthorizedInstructor && effectiveActiveFichas.length === 0 && (
                       <button
                         type="button"
                         onClick={() => setActiveView('instructor')}
@@ -1509,32 +1712,34 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Institutional Trust & Pedagogical Context Strip (Claim-to-Proof Adjacency) */}
-              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-                <div className="lg:col-span-8 space-y-2">
-                  <div className="flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-400 font-semibold">
-                    <SenaLogo className="w-5 h-5" />
-                    <span>Apropiación verificable para Instructores y Coordinación Académica</span>
+              {/* Authorized Instructor Context Strip (Hidden completely from Apprentices) */}
+              {isAuthorizedInstructor && (
+                <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                  <div className="lg:col-span-8 space-y-2">
+                    <div className="flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-400 font-semibold">
+                      <SenaLogo className="w-5 h-5" />
+                      <span>Panel Docente Habilitado para tu Cuenta Autorizada</span>
+                    </div>
+                    <h2 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">
+                      Gestión de Fichas y Seguimiento de Inducción
+                    </h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                      Accede al módulo de Gestión Instructor para administrar tus Fichas de Caracterización, verificar la apropiación de tus aprendices y sincronizar el consolidado oficial en Google Sheets.
+                    </p>
                   </div>
-                  <h2 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">
-                    ¿Eres instructor gestor de inducción?
-                  </h2>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Desde el módulo de Gestión Instructor puedes crear tus Fichas de Caracterización, identificar en segundos qué aprendices aprobaron la apropiación (≥ 70%) o requieren Plan de Mejoramiento, revisar el porcentaje exacto en Identidad, Valores, Derechos y Deberes, y descargar el acta en formato CSV.
-                  </p>
-                </div>
 
-                <div className="lg:col-span-4 flex lg:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setActiveView('instructor')}
-                    className="inline-flex items-center gap-2 px-5 py-3 text-xs font-semibold text-white dark:text-slate-900 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <Users className="w-4 h-4" />
-                    Abrir Gestión Instructor
-                  </button>
-                </div>
-              </section>
+                  <div className="lg:col-span-4 flex lg:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setActiveView('instructor')}
+                      className="inline-flex items-center gap-2 px-5 py-3 text-xs font-semibold text-white dark:text-slate-900 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Users className="w-4 h-4" />
+                      Abrir Gestión Instructor
+                    </button>
+                  </div>
+                </section>
+              )}
             </div>
           )}
 
@@ -1560,8 +1765,8 @@ export default function App() {
             <GfpiF165Form
               user={user}
               profile={localState.profile}
-              activeFichas={effectiveActiveFichas}
-              selectedFicha={selectedFicha}
+              activeFichas={apprenticeActiveFichas}
+              selectedFicha={apprenticeSelectedFicha}
               savedSubmission={effectiveGfpiSubmission}
               isSaving={syncingProgress}
               onSaveSubmission={handleSaveGfpiF165}
@@ -1574,12 +1779,13 @@ export default function App() {
             <InteractiveEvaluation
               apprenticeName={localState.profile.apprenticeName}
               documentCode={localState.profile.documentCode}
-              selectedFicha={selectedFicha}
+              selectedFicha={apprenticeSelectedFicha}
               isSignedIn={Boolean(user)}
               isSaving={syncingProgress}
               saveFeedback={syncFeedback}
               latestSummary={localState.latestSummary}
               onCompleteEvaluation={handleCompleteEvaluation}
+              onDownloadTrajectoryPdf={handleDownloadApprenticePdf}
               onNavigateModule={(target) => setActiveView(target)}
               onRequestSignIn={() => void handleGoogleSignIn()}
             />
@@ -1589,9 +1795,9 @@ export default function App() {
             <ApprenticeProfile
               user={user}
               profile={localState.profile}
-              activeFichas={effectiveActiveFichas}
-              selectedFicha={selectedFicha}
-              currentEnrollment={effectiveCurrentEnrollment}
+              activeFichas={apprenticeActiveFichas}
+              selectedFicha={apprenticeSelectedFicha}
+              currentEnrollment={apprenticeCurrentEnrollment}
               gfpiSubmission={effectiveGfpiSubmission}
               completedModules={localState.completedModules}
               latestSummary={localState.latestSummary}
@@ -1606,7 +1812,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'instructor' && (
+          {isAuthorizedInstructor && activeView === 'instructor' && (
             <InstructorDashboard
               user={user}
               authReady={authReady}

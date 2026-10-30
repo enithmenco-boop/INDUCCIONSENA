@@ -213,5 +213,37 @@ export const DIRTY_DOZEN_CASES: AdversarialTestCase[] = [
     expectedOutcome: 'PERMISSION_DENIED',
     blockingGate: 'isValidFichaSheetLink -> data.keys().hasOnly(...) && parentFicha.instructorId == request.auth.uid',
   },
+  {
+    id: 19,
+    name: 'Apprentice Attempting Privilege Escalation by Creating a Ficha',
+    collectionPath: '/fichas/ficha_9999999',
+    operation: 'create',
+    auth: { uid: 'apr_1', email: 'apr@soy.sena.edu.co', email_verified: true },
+    payload: {
+      fichaCode: '9999999',
+      programName: 'Analisis y Desarrollo de Software',
+      centerName: 'Centro de Servicios',
+      jornada: 'Diurna',
+      instructorId: 'apr_1',
+      instructorName: 'Aprendiz No Autorizado',
+      status: 'activa',
+    },
+    expectedOutcome: 'PERMISSION_DENIED',
+    blockingGate: 'Ficha Create RBAC Gate -> isAdmin()',
+  },
+  {
+    id: 20,
+    name: 'Apprentice Attempting to Forge Instructor Observation or Non-Canonical Enrollment ID',
+    collectionPath: '/fichas/ficha_2874590/enrollments/enr_apr_1',
+    operation: 'create',
+    auth: { uid: 'apr_1', email: 'apr@soy.sena.edu.co', email_verified: true },
+    payload: {
+      authorId: 'apr_1',
+      instructorObservation: 'Certificado aprobado por instructor',
+    },
+    expectedOutcome: 'PERMISSION_DENIED',
+    blockingGate: "Apprentice Enrollment Create Gate -> enrollmentId == 'enr_' + request.auth.uid && incoming().instructorObservation == ''",
+  },
 ];
+
 
